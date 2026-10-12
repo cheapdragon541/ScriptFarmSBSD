@@ -1,4 +1,4 @@
---[[ Auto-Farm Hub v4 - Tabbed UI ]]
+--[[ Auto-Farm Hub v5 - Animations + Minimize ]]
 local player = game.Players.LocalPlayer
 local mouse = player:GetMouse()
 local VIM = game:GetService("VirtualInputManager")
@@ -6,6 +6,7 @@ local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
 
 -- Safe parent
 local function getSafeParent()
@@ -24,6 +25,7 @@ if _G.AutoFarmState == nil then
         attract = false, attractRange = 200,
         loopThread = nil, attractThread = nil,
         gui = nil, activeTab = "Farm",
+        minimized = false,
     }
 end
 local S = _G.AutoFarmState
@@ -171,6 +173,7 @@ local function buildGUI()
         elseif protect_gui then protect_gui(gui) end
     end)
 
+    -- === MAIN WINDOW ===
     local main = Instance.new("Frame")
     main.Size = UDim2.new(0, 640, 0, 420)
     main.Position = UDim2.new(0.5, -320, 0.5, -210)
@@ -178,11 +181,55 @@ local function buildGUI()
     main.BorderSizePixel = 0
     main.Active = true
     main.Draggable = true
+    main.BackgroundTransparency = 1
     main.Parent = gui
     Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
-    local ms = Instance.new("UIStroke", main) ms.Color = C.border ms.Thickness = 1
+    local ms = Instance.new("UIStroke", main) ms.Color = C.border ms.Thickness = 1 ms.Transparency = 1
 
-    -- Title bar
+    -- === MINIMIZED ICON (hidden by default) ===
+    local miniIcon = Instance.new("TextButton")
+    miniIcon.Size = UDim2.new(0, 130, 0, 46)
+    miniIcon.Position = UDim2.new(0, 20, 1, -70)
+    miniIcon.BackgroundColor3 = C.bg
+    miniIcon.Text = ""
+    miniIcon.Visible = false
+    miniIcon.Parent = gui
+    Instance.new("UICorner", miniIcon).CornerRadius = UDim.new(0, 10)
+    local miniStroke = Instance.new("UIStroke", miniIcon) miniStroke.Color = C.accent miniStroke.Thickness = 1.5
+
+    local miniIconLbl = Instance.new("TextLabel", miniIcon)
+    miniIconLbl.Size = UDim2.new(1, 0, 1, 0)
+    miniIconLbl.BackgroundTransparency = 1
+    miniIconLbl.Text = "⚡ SBSD Farm"
+    miniIconLbl.TextColor3 = C.text
+    miniIconLbl.Font = Enum.Font.GothamBold
+    miniIconLbl.TextSize = 14
+
+    miniIcon.MouseEnter:Connect(function()
+        TweenService:Create(miniIcon, TweenInfo.new(0.15), {BackgroundColor3 = C.sidebar}):Play()
+        TweenService:Create(miniStroke, TweenInfo.new(0.15), {Thickness = 2}):Play()
+    end)
+    miniIcon.MouseLeave:Connect(function()
+        TweenService:Create(miniIcon, TweenInfo.new(0.15), {BackgroundColor3 = C.bg}):Play()
+        TweenService:Create(miniStroke, TweenInfo.new(0.15), {Thickness = 1.5}):Play()
+    end)
+
+    -- === BOTTOM HINT (when minimized) ===
+    local hint = Instance.new("TextLabel")
+    hint.Size = UDim2.new(0, 280, 0, 30)
+    hint.Position = UDim2.new(0.5, -140, 1, -55)
+    hint.BackgroundColor3 = C.bg
+    hint.BackgroundTransparency = 1
+    hint.Text = "Press  Right Ctrl  to open  ⚡"
+    hint.TextColor3 = C.text
+    hint.Font = Enum.Font.GothamBold
+    hint.TextSize = 13
+    hint.Visible = false
+    hint.Parent = gui
+    Instance.new("UICorner", hint).CornerRadius = UDim.new(0, 6)
+    local hintStroke = Instance.new("UIStroke", hint) hintStroke.Color = C.accent hintStroke.Thickness = 1 hintStroke.Transparency = 1
+
+    -- === Title bar ===
     local titleBar = Instance.new("Frame")
     titleBar.Size = UDim2.new(1, 0, 0, 38)
     titleBar.BackgroundColor3 = C.sidebar
@@ -207,16 +254,17 @@ local function buildGUI()
     logo.Parent = titleBar
 
     local titleText = Instance.new("TextLabel")
-    titleText.Size = UDim2.new(1, -100, 1, 0)
+    titleText.Size = UDim2.new(1, -140, 1, 0)
     titleText.Position = UDim2.new(0, 42, 0, 0)
     titleText.BackgroundTransparency = 1
-    titleText.Text = "Auto-Farm Hub"
+    titleText.Text = "Auto-Farm Hub  •  SBSD"
     titleText.TextColor3 = C.text
     titleText.Font = Enum.Font.GothamBold
     titleText.TextSize = 15
     titleText.TextXAlignment = Enum.TextXAlignment.Left
     titleText.Parent = titleBar
 
+    -- Close button (full close)
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 26, 0, 26)
     closeBtn.Position = UDim2.new(1, -34, 0, 6)
@@ -227,8 +275,8 @@ local function buildGUI()
     closeBtn.TextSize = 14
     closeBtn.Parent = titleBar
     Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-    closeBtn.MouseButton1Click:Connect(function() gui.Enabled = false end)
 
+    -- Minimize button
     local minBtn = Instance.new("TextButton")
     minBtn.Size = UDim2.new(0, 26, 0, 26)
     minBtn.Position = UDim2.new(1, -66, 0, 6)
@@ -239,7 +287,6 @@ local function buildGUI()
     minBtn.TextSize = 14
     minBtn.Parent = titleBar
     Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
-    minBtn.MouseButton1Click:Connect(function() gui.Enabled = false end)
 
     -- Sidebar
     local sidebar = Instance.new("Frame")
@@ -342,14 +389,14 @@ local function buildGUI()
         local function update()
             local target = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
             TweenService:Create(knob, TweenInfo.new(0.15), {Position = target}):Play()
-            track.BackgroundColor3 = state and C.green or Color3.fromRGB(60, 60, 70)
+            TweenService:Create(track, TweenInfo.new(0.15), {BackgroundColor3 = state and C.green or Color3.fromRGB(60, 60, 70)}):Play()
         end
         btn.MouseButton1Click:Connect(function()
             state = not state update()
             if callback then callback(state) end
         end)
-        item.MouseEnter:Connect(function() item.BackgroundColor3 = C.itemHover end)
-        item.MouseLeave:Connect(function() item.BackgroundColor3 = C.item end)
+        item.MouseEnter:Connect(function() TweenService:Create(item, TweenInfo.new(0.1), {BackgroundColor3 = C.itemHover}):Play() end)
+        item.MouseLeave:Connect(function() TweenService:Create(item, TweenInfo.new(0.1), {BackgroundColor3 = C.item}):Play() end)
         return item
     end
 
@@ -386,8 +433,8 @@ local function buildGUI()
         box:GetPropertyChangedSignal("Text"):Connect(function()
             if callback then callback(box.Text) end
         end)
-        item.MouseEnter:Connect(function() item.BackgroundColor3 = C.itemHover end)
-        item.MouseLeave:Connect(function() item.BackgroundColor3 = C.item end)
+        item.MouseEnter:Connect(function() TweenService:Create(item, TweenInfo.new(0.1), {BackgroundColor3 = C.itemHover}):Play() end)
+        item.MouseLeave:Connect(function() TweenService:Create(item, TweenInfo.new(0.1), {BackgroundColor3 = C.item}):Play() end)
         return item
     end
 
@@ -446,8 +493,8 @@ local function buildGUI()
             end
         end)
         mouse.Button1Up:Connect(function() dragging = false end)
-        item.MouseEnter:Connect(function() item.BackgroundColor3 = C.itemHover end)
-        item.MouseLeave:Connect(function() item.BackgroundColor3 = C.item end)
+        item.MouseEnter:Connect(function() TweenService:Create(item, TweenInfo.new(0.1), {BackgroundColor3 = C.itemHover}):Play() end)
+        item.MouseLeave:Connect(function() TweenService:Create(item, TweenInfo.new(0.1), {BackgroundColor3 = C.item}):Play() end)
         return item
     end
 
@@ -463,8 +510,12 @@ local function buildGUI()
         btn.Parent = parent
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
         btn.MouseButton1Click:Connect(callback)
-        btn.MouseEnter:Connect(function() btn.BackgroundColor3 = (color or C.item):Lerp(Color3.new(1,1,1), 0.1) end)
-        btn.MouseLeave:Connect(function() btn.BackgroundColor3 = color or C.item end)
+        btn.MouseEnter:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = (color or C.item):Lerp(Color3.new(1,1,1), 0.1)}):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = color or C.item}):Play()
+        end)
         return btn
     end
 
@@ -514,7 +565,7 @@ local function buildGUI()
         end
     end)
 
-    -- COMBAT (placeholder)
+    -- COMBAT
     makeSection(pageCombat, "Teleportation")
     makeButton(pageCombat, "📍 Teleport to Nearest Enemy", C.accent, function()
         local myChar = player.Character
@@ -550,9 +601,9 @@ local function buildGUI()
     -- MISC
     makeSection(pageMisc, "Information")
     local infoLbl = Instance.new("TextLabel")
-    infoLbl.Size = UDim2.new(1, 0, 0, 80)
+    infoLbl.Size = UDim2.new(1, 0, 0, 100)
     infoLbl.BackgroundColor3 = C.item
-    infoLbl.Text = "Auto-Farm Hub v4\nPress F4 to toggle interface\nEnemies are pulled from Workspace.Enemies"
+    infoLbl.Text = "Auto-Farm Hub v5\n\n• Right Ctrl — open / minimize hub\n• Enemies are pulled from Workspace.Enemies\n• Minimize button hides UI to icon"
     infoLbl.TextColor3 = C.textDim
     infoLbl.Font = Enum.Font.Gotham
     infoLbl.TextSize = 12
@@ -596,10 +647,10 @@ local function buildGUI()
         if pagesMap[name] then pagesMap[name].Visible = true end
         for n, btn in pairs(tabButtons) do
             if n == name then
-                btn.BackgroundColor3 = C.accent
+                TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = C.accent}):Play()
                 btn.TextColor3 = Color3.fromRGB(255, 255, 255)
             else
-                btn.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+                TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(30, 30, 38)}):Play()
                 btn.TextColor3 = C.textDim
             end
         end
@@ -619,16 +670,151 @@ local function buildGUI()
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
         btn.MouseButton1Click:Connect(function() switchTab(tab.name) end)
         btn.MouseEnter:Connect(function()
-            if S.activeTab ~= tab.name then btn.BackgroundColor3 = C.itemHover end
+            if S.activeTab ~= tab.name then
+                TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = C.itemHover}):Play()
+            end
         end)
         btn.MouseLeave:Connect(function()
-            if S.activeTab ~= tab.name then btn.BackgroundColor3 = Color3.fromRGB(30, 30, 38) end
+            if S.activeTab ~= tab.name then
+                TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(30, 30, 38)}):Play()
+            end
         end)
         tabButtons[tab.name] = btn
     end
 
     switchTab(S.activeTab or "Farm")
     S.gui = gui
+    S.main = main
+    S.miniIcon = miniIcon
+    S.hint = hint
+
+    -- ==== MINIMIZE / RESTORE ====
+    local function minimize()
+        S.minimized = true
+        -- Fade out main
+        local fade = TweenService:Create(main, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 400, 0, 260),
+            Position = UDim2.new(0.5, -200, 0.5, -130),
+        })
+        fade:Play()
+        -- Fade out children
+        for _, d in ipairs(main:GetDescendants()) do
+            if d:IsA("GuiObject") and d.BackgroundTransparency < 1 then
+                local orig = d.BackgroundTransparency
+                TweenService:Create(d, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
+            end
+            if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+                TweenService:Create(d, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
+            end
+        end
+        TweenService:Create(ms, TweenInfo.new(0.2), {Transparency = 1}):Play()
+        fade.Completed:Connect(function()
+            main.Visible = false
+            -- Show mini icon with pop animation
+            miniIcon.Visible = true
+            miniIcon.Size = UDim2.new(0, 0, 0, 0)
+            miniIcon.Position = UDim2.new(0, 20, 1, -70)
+            TweenService:Create(miniIcon, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, 130, 0, 46)
+            }):Play()
+            -- Show hint
+            hint.Visible = true
+            hint.TextTransparency = 1
+            hintStroke.Transparency = 1
+            TweenService:Create(hint, TweenInfo.new(0.4), {TextTransparency = 0}):Play()
+            TweenService:Create(hintStroke, TweenInfo.new(0.4), {Transparency = 0.5}):Play()
+        end)
+    end
+
+    local function restore()
+        S.minimized = false
+        -- Hide hint
+        TweenService:Create(hint, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
+        TweenService:Create(hintStroke, TweenInfo.new(0.2), {Transparency = 1}):Play()
+        task.wait(0.15)
+        hint.Visible = false
+        -- Shrink mini icon
+        local shrink = TweenService:Create(miniIcon, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, 0, 0, 0)
+        })
+        shrink:Play()
+        shrink.Completed:Connect(function()
+            miniIcon.Visible = false
+            -- Restore main
+            main.Visible = true
+            main.BackgroundTransparency = 1
+            main.Size = UDim2.new(0, 400, 0, 260)
+            main.Position = UDim2.new(0.5, -200, 0.5, -130)
+            ms.Transparency = 1
+            for _, d in ipairs(main:GetDescendants()) do
+                if d:IsA("GuiObject") then
+                    if d.BackgroundTransparency > 0 and d.BackgroundTransparency < 1 then
+                        -- leave sliders/input transparent
+                    end
+                end
+            end
+            -- Fade in everything
+            TweenService:Create(main, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundTransparency = 0,
+                Size = UDim2.new(0, 640, 0, 420),
+                Position = UDim2.new(0.5, -320, 0.5, -210),
+            }):Play()
+            TweenService:Create(ms, TweenInfo.new(0.3), {Transparency = 0}):Play()
+            for _, d in ipairs(main:GetDescendants()) do
+                if d:IsA("GuiObject") then
+                    if d.Name == "SliderBg" or d.Name == "BarBg" then
+                        TweenService:Create(d, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+                    elseif d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+                        TweenService:Create(d, TweenInfo.new(0.3), {TextTransparency = 0, BackgroundTransparency = 0}):Play()
+                    else
+                        TweenService:Create(d, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+                    end
+                end
+            end
+        end)
+    end
+
+    minBtn.MouseButton1Click:Connect(minimize)
+    closeBtn.MouseButton1Click:Connect(function()
+        -- Close = also minimize (keeps running in background)
+        minimize()
+    end)
+    miniIcon.MouseButton1Click:Connect(restore)
+
+    -- === INTRO ANIMATION ===
+    main.Size = UDim2.new(0, 400, 0, 260)
+    main.Position = UDim2.new(0.5, -200, 0.5, -130)
+    main.BackgroundTransparency = 1
+    ms.Transparency = 1
+    for _, d in ipairs(main:GetDescendants()) do
+        if d:IsA("GuiObject") then
+            if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+                d.TextTransparency = 1
+            end
+            if d.BackgroundTransparency < 1 then
+                d.BackgroundTransparency = 1
+            end
+        end
+    end
+    task.wait(0.05)
+    TweenService:Create(main, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 640, 0, 420),
+        Position = UDim2.new(0.5, -320, 0.5, -210),
+        BackgroundTransparency = 0,
+    }):Play()
+    TweenService:Create(ms, TweenInfo.new(0.4), {Transparency = 0}):Play()
+    task.wait(0.15)
+    for _, d in ipairs(main:GetDescendants()) do
+        if d:IsA("GuiObject") then
+            if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+                TweenService:Create(d, TweenInfo.new(0.4), {TextTransparency = 0, BackgroundTransparency = d.BackgroundTransparency < 0.5 and 0 or d.BackgroundTransparency}):Play()
+            end
+            if d.BackgroundTransparency < 1 then
+                TweenService:Create(d, TweenInfo.new(0.4), {BackgroundTransparency = 0}):Play()
+            end
+        end
+    end
 
     if S.running then startLoop() end
     if S.attract then startAttract() end
@@ -653,13 +839,34 @@ player.CharacterAdded:Connect(function()
     if not S.gui or not S.gui.Parent then buildGUI() end
 end)
 
--- F4 toggle
+-- Right Ctrl toggle (minimize/restore)
 UIS.InputBegan:Connect(function(input, gpe)
     if gpe then return end
-    if input.KeyCode == Enum.KeyCode.F4 then
-        if S.gui then S.gui.Enabled = not S.gui.Enabled
-        else buildGUI() end
+    if input.KeyCode == Enum.KeyCode.RightControl then
+        if not S.gui then
+            buildGUI()
+            return
+        end
+        if S.minimized then
+            if S.gui.restore then S.gui.restore() end
+            -- fallback: re-fire mini icon
+            if S.miniIcon and S.miniIcon.Visible then
+                S.miniIcon.MouseButton1Click:Fire()
+            end
+        else
+            -- find minimize button and click it
+            if S.main then
+                local minBtn = S.main:FindFirstChild("Frame", true)
+                -- try direct reference via cached
+                for _, d in ipairs(S.main:GetDescendants()) do
+                    if d:IsA("TextButton") and d.Text == "—" then
+                        d.MouseButton1Click:Fire()
+                        break
+                    end
+                end
+            end
+        end
     end
 end)
 
-print("✅ Auto-Farm Hub v4 loaded — press F4 to toggle")
+print("✅ Auto-Farm Hub v5 loaded — press Right Ctrl to toggle")
